@@ -5,15 +5,19 @@ interface UseYouTubeProps {
   videoId: string;
   containerId: string;
   onStateChange?: (event: any) => void;
-  onReady?: () => void;
+  onReady?: (event: any) => void;
 }
 
 export const useYouTube = ({ videoId, containerId, onStateChange, onReady }: UseYouTubeProps) => {
   const playerRef = useRef<any>(null);
   const [isReady, setIsReady] = useState(false);
+  const [duration, setDuration] = useState(0);
 
   useEffect(() => {
-    // Load API if not present
+    // 1. Guard: Don't initialize if no videoId
+    if (!videoId) return;
+
+    // 2. Load API if not present
     if (!window.YT) {
       const tag = document.createElement('script');
       tag.src = 'https://www.youtube.com/iframe_api';
@@ -22,23 +26,29 @@ export const useYouTube = ({ videoId, containerId, onStateChange, onReady }: Use
     }
 
     const initPlayer = () => {
+      // Prevent duplicate init
+      if (playerRef.current) return;
+
       if (window.YT && window.YT.Player) {
         playerRef.current = new window.YT.Player(containerId, {
           height: '100%',
           width: '100%',
           videoId: videoId,
           playerVars: {
-            autoplay: 0,
-            controls: 0, // Hide default controls for custom sync UI
+            autoplay: 0, // We handle play manually for sync
+            controls: 0, // Hide default controls
             modestbranding: 1,
             rel: 0,
-            disablekb: 1, // Disable keyboard to prevent listener interference
-            fs: 0, // Handle fullscreen manually if needed
+            disablekb: 1,
+            fs: 0,
+            iv_load_policy: 3, // Hide annotations
+            playsinline: 1,
           },
           events: {
-            onReady: () => {
+            onReady: (event: any) => {
               setIsReady(true);
-              if (onReady) onReady();
+              setDuration(event.target.getDuration());
+              if (onReady) onReady(event);
             },
             onStateChange: (event: any) => {
               if (onStateChange) onStateChange(event);
@@ -51,15 +61,26 @@ export const useYouTube = ({ videoId, containerId, onStateChange, onReady }: Use
     if (window.YT && window.YT.Player) {
       initPlayer();
     } else {
-      window.onYouTubeIframeAPIReady = initPlayer;
+      // Handle the global callback
+      const existingCallback = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (existingCallback) existingCallback();
+        initPlayer();
+      };
     }
 
     return () => {
       if (playerRef.current) {
-        playerRef.current.destroy();
+        try {
+          playerRef.current.destroy();
+        } catch(e) { 
+          // ignore cleanup errors 
+        }
+        playerRef.current = null;
       }
+      setIsReady(false);
     };
-  }, [videoId, containerId]);
+  }, [videoId, containerId]); // Re-run if videoId changes
 
   const controls: PlayerControls = {
     play: useCallback(() => playerRef.current?.playVideo(), []),
@@ -69,5 +90,5 @@ export const useYouTube = ({ videoId, containerId, onStateChange, onReady }: Use
     getPlayerState: useCallback(() => playerRef.current?.getPlayerState(), []),
   };
 
-  return { isReady, controls };
+  return { isReady, duration, controls };
 };
