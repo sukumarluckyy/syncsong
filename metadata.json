@@ -1,0 +1,5 @@
+{
+  "name": "SyncStream",
+  "description": "A modern, minimalist real-time video synchronization platform for watching YouTube videos together.",
+  "requestFramePermissions": []
+}
